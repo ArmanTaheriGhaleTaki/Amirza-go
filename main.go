@@ -7,7 +7,8 @@ import (
 	"os/exec"
 	"runtime"
 
-	// "database/sql"
+	"database/sql"
+
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -65,13 +66,12 @@ func InternalMenu(login_user User) {
 	fmt.Printf("\n")
 	fmt.Println("1.Continue game")
 	fmt.Println("2.Choose level")
-	fmt.Println("3.Wheel of Luck")
-	fmt.Println("4.Edit profile")
-	fmt.Println("5.Logout")
+	fmt.Println("3.Edit profile")
+	fmt.Println("4.Logout")
 	fmt.Printf("\n\n")
 	fmt.Println("Please enter your choice:")
 }
-func Get_UserInfo(player *User) {
+func Get_UserInfo(player *User) (user_exist bool) {
 	db, err := sqlx.Connect("postgres", "user=a dbname=amirza sslmode=disable password=123 host=localhost")
 	if err != nil {
 		log.Fatalln(err)
@@ -87,12 +87,18 @@ func Get_UserInfo(player *User) {
 
 	var insert string = fmt.Sprintf("SELECT name,password, mission_lvl,coin,extra_words,chance FROM user_info where name='%s';", player.Name)
 	rows, _ := db.Queryx(insert)
-	// 		errr := db.Select(&player, insert)
-	// 		fmt.Println(errr)
-	// //////////////////##############need error handling fir empty query ############################
-	// 		if errr != nil{
-	// 			os.Exit(2)
-	// 		}
+
+	i := User{}
+
+	errr := db.Get(&i, insert)
+
+	if errr == sql.ErrNoRows {
+		log.Println("Not Found")
+		return false
+	} else if err != nil {
+		log.Fatalln(err)
+	}
+
 	for rows.Next() {
 		err := rows.StructScan(&player)
 		if err != nil {
@@ -100,8 +106,74 @@ func Get_UserInfo(player *User) {
 		}
 		log.Printf("%#v\n", player)
 	}
-
+	return true
 }
+func Show_rank() {
+	db, err := sqlx.Connect("postgres", "user=a dbname=amirza sslmode=disable password=123 host=localhost")
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		log.Fatal(err)
+	} else {
+		log.Println("Successfully Connected")
+	}
+
+	var insert string = fmt.Sprintf("SELECT name , mission_lvl from user_info ORDER BY mission_lvl DESC ;")
+	rows, _ := db.Queryx(insert)
+
+	var players []*User
+
+	for rows.Next() {
+		var player = &User{}
+		err := rows.StructScan(&player)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		// log.Printf("%#v\n", players)
+		players = append(players, player)
+	}
+	for a, b := range players {
+		fmt.Printf("%d. %s mission_lvl=%d\n", a+1, b.Name, b.Mission)
+	}
+}
+func Pass_check(name string, pass string) (result bool) {
+
+	db, err := sqlx.Connect("postgres", "user=a dbname=amirza sslmode=disable password=123 host=localhost")
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		log.Fatal(err)
+	} else {
+		log.Println("Successfully Connected")
+	}
+	get_pass := fmt.Sprintf("select password from user_info where name='%s';", name)
+
+	rows, _ := db.Queryx(get_pass)
+	var tmp_player User
+	for rows.Next() {
+		err := rows.StructScan(&tmp_player)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		log.Printf("%#v\n", tmp_player)
+	}
+	if pass == tmp_player.Password {
+		return true
+
+	} else {
+		return false
+	}
+	// log.Printf("%#v\n", players)
+}
+
 func editProfile(player *User) {
 	db, err := sqlx.Connect("postgres", "user=a dbname=amirza sslmode=disable password=123 host=localhost")
 	if err != nil {
@@ -149,6 +221,42 @@ func editProfile(player *User) {
 		}
 	}
 	// db.QueryRow(get_pass).Scan(&output.Country)
+}
+func login() {
+	fmt.Println("please enter your name")
+	var new_player User
+	fmt.Scanln(&new_player.Name)
+	if Get_UserInfo(&new_player) == false {
+		var pass string
+		var pass_check string
+		fmt.Println("please enter your password")
+		fmt.Scanln(&pass)
+		fmt.Println("please reenter  your password to confirm")
+		fmt.Scanln(&pass_check)
+		if pass == pass_check {
+			new_player.Password = pass
+			var insert string = fmt.Sprintf("INSERT INTO user_info (name,password,mission_lvl,coin,extra_words,chance) VALUES ('%s','%s','%d','%d','%d','%d');", new_player.Name, new_player.Password, new_player.Mission, new_player.Coin, new_player.Extra, new_player.Chance)
+			db, err := sqlx.Connect("postgres", "user=a dbname=amirza sslmode=disable password=123 host=localhost")
+			if err != nil {
+				log.Fatalln(err)
+			}
+
+			defer db.Close()
+
+			if err := db.Ping(); err != nil {
+				log.Fatal(err)
+			} else {
+				log.Println("Successfully Connected")
+			}
+			db.Exec(insert)
+			log.Println("Database Updated")
+
+		} else {
+			println("passwords are not match")
+		}
+	} else {
+		fmt.Println("this username is already exists")
+	}
 
 }
 
@@ -170,16 +278,23 @@ func main() {
 
 	switch choose {
 	case 1:
-		//##########################################  make user  #########################################################
-
-		fmt.Println("1")
+		login()
 	case 2:
 		fmt.Println("insert the name of player")
 		fmt.Scanln(&player.Name)
-		Get_UserInfo(&player)
+		if Get_UserInfo(&player) == true {
+			fmt.Printf("please enter %s password\n", player.Name)
+			var pass string
+			fmt.Scanln(&pass)
+		if Pass_check(player.Name, pass) {
+
 		// CallClear()
 		InternalMenu(player)
-
+		}else{
+			fmt.Println("password is not correct")
+		}
+	
+	}
 		choose = 0
 		fmt.Scanln(&choose)
 		CallClear()
@@ -192,23 +307,13 @@ func main() {
 
 		case 3:
 			CallClear()
-			//############### wheel of luck ###################
-
-		case 4:
-			CallClear()
-			//############### editProfile ###################
 
 			editProfile(&player)
-			//     goto sub;
-			//         break;
-		case 5:
+		case 4:
 			CallClear()
 		}
 	case 3:
-		fmt.Println("3")
-		//############### showRank ###################
-
-		// showRank();
+		Show_rank()
 
 	case 4:
 		fmt.Println("4")
